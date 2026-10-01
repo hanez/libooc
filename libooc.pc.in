@@ -1,0 +1,9 @@
+prefix=@prefix@
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+Name: libooc
+Description: A tiny C library for object-oriented programming using ordinary C structs and function-pointer vtables.
+Version: @VERSION@
+Libs: -L${libdir} -looc
+Cflags: -I${includedir}
