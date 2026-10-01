@@ -31,7 +31,7 @@ typedef struct Dog Dog;
  */
 struct Dog {
     Animal animal;
-    char  *breed;
+    char *breed;
 };
 
 /*

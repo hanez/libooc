@@ -32,7 +32,7 @@ typedef struct Cat Cat;
  */
 struct Cat {
     Animal animal;
-    char  *colour;
+    char *colour;
 
     /*
      * Private to Cat, and readable by name: one leading underscore stops
@@ -40,7 +40,7 @@ struct Cat {
      * the same way, so the rule is the one in the library rather than something
      * the subclass has to repeat.
      */
-    int    _lives;
+    int _lives;
 };
 
 /*

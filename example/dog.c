@@ -41,8 +41,8 @@
  */
 static char *dupstr(const char *text)
 {
-    size_t  len;
-    char   *copy;
+    size_t len;
+    char *copy;
 
     if (!text)
         return NULL;
@@ -128,7 +128,7 @@ static const AnimalVTable vt = {
  */
 static const ooc_field Dog_fields[] = {
     { "breed", offsetof(Dog, breed), sizeof(((Dog *)0)->breed), 1 },
-    { NULL,    0,                    0,                          0 },
+    { NULL,    0,                    0,                         0 },
 };
 
 /*
@@ -181,7 +181,7 @@ Dog *dog_new(const char *name, int age, const char *breed)
     }
 
     dog->animal.vtable = &vt;
-    dog->breed         = dupstr(breed);
+    dog->breed = dupstr(breed);
 
     if (!dog->breed) {
         ooc_release(dog);

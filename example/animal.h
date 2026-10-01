@@ -38,10 +38,10 @@ struct AnimalVTable {
  * struct as their first member, which makes the upcast free.
  */
 struct Animal {
-    ooc_object          object;
+    ooc_object object;
     const AnimalVTable *vtable;
-    char               *name;
-    int                 age;
+    char *name;
+    int age;
 
     /*
      * Two fields that belong to the class alone, told apart by their leading
@@ -52,8 +52,8 @@ struct Animal {
      * nothing outside Animal can read or write it by name at all. Both are set
      * from the struct definition below, where the members are in view.
      */
-    int                 _id;
-    int                 __legs;
+    int _id;
+    int __legs;
 };
 
 /*

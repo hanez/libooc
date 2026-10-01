@@ -38,8 +38,8 @@
  */
 static char *dupstr(const char *text)
 {
-    size_t  len;
-    char   *copy;
+    size_t len;
+    char *copy;
 
     if (!text)
         return NULL;

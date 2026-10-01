@@ -43,8 +43,8 @@
  */
 static char *dupstr(const char *text)
 {
-    size_t  len;
-    char   *copy;
+    size_t len;
+    char *copy;
 
     if (!text)
         return NULL;
@@ -157,10 +157,10 @@ static const ooc_field Cat_fields[] = {
  * Dog stay distinguishable while both are passed around as Animal.
  */
 const ooc_class Cat_class = {
-    .size    = sizeof(Cat),
+    .size = sizeof(Cat),
     .destroy = destroy,
-    .super   = &Animal_class,
-    .fields  = Cat_fields,
+    .super = &Animal_class,
+    .fields = Cat_fields,
 };
 
 /*
@@ -203,8 +203,8 @@ Cat *cat_new(const char *name, int age, const char *colour)
     }
 
     cat->animal.vtable = &vt;
-    cat->colour        = dupstr(colour);
-    cat->_lives        = 9;
+    cat->colour = dupstr(colour);
+    cat->_lives = 9;
 
     if (!cat->colour) {
         ooc_release(cat);
