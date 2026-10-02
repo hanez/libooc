@@ -1,6 +1,9 @@
 # libooc
 
-A tiny C library for object-oriented programming using ordinary C structs and function-pointer vtables. It provides object allocation, virtual destructors, intrusive reference counting, runtime class metadata, name-based field access, and a small interface header.
+A tiny C library for object-oriented programming using ordinary C structs and 
+function-pointer vtables. It provides object allocation, virtual destructors, 
+intrusive reference counting, runtime class metadata, name-based field access, 
+and a small interface header.
 
 ## Build
 
@@ -25,7 +28,8 @@ For packaging, `pkg` stages the same tree under `./pkg` without needing root:
     make pkg
     make clean-pkg
 
-That is shorthand for `make DESTDIR="$PWD/pkg" PREFIX=/$(PREFIX) install`, and it honours an overridden prefix:
+That is shorthand for `make DESTDIR="$PWD/pkg" PREFIX=/$(PREFIX) install`, and 
+it honours an overridden prefix:
 
     make pkg PREFIX=/usr
 
@@ -59,8 +63,8 @@ one through the same calls before putting all four objects through a single
 `Animal *`. The output makes the point that is invisible in the source: one call
 site reaches four implementations, and the vtable decides which.
 
-    make test            # runs example/main.c
-    make safety-test     # runs the assertion suite in tests/
+    make example-test  # runs example/main.c
+    make safety-test   # runs the assertion suite in tests/
 
 Objects are reference-counted with `ooc_retain()` and `ooc_release()`.
 
@@ -68,7 +72,8 @@ The public installed header is:
 
     #include <ooc/ooc.h>
 
-Application-specific classes such as `Animal`, `Dog` and `Cat` are not installed by the library.
+Application-specific classes such as `Animal`, `Dog` and `Cat` are not installed 
+by the library.
 
 ### Constructors down a chain
 
@@ -168,7 +173,7 @@ field is assigned through a pointer to the pointer:
 ```c
 char *name = copy_of("Bella");
 
-ooc_set(dog, "name", &name);          /* "Rex" is freed here */
+ooc_set(dog, "name", &name);  /* "Rex" is freed here */
 printf("%s\n", *(char **)ooc_get(dog, "name"));
 ```
 
@@ -188,9 +193,9 @@ own `favourite_food` does.
 answers for a base class as well as for the type itself:
 
 ```c
-ooc_is_a(cat, &Cat_class);      /* 1 */
-ooc_is_a(cat, &Animal_class);   /* 1 -- a Cat is an Animal */
-ooc_is_a(cat, &Dog_class);      /* 0 -- siblings are unrelated */
+ooc_is_a(cat, &Cat_class);     /* 1 */
+ooc_is_a(cat, &Animal_class);  /* 1 -- a Cat is an Animal */
+ooc_is_a(cat, &Dog_class);     /* 0 -- siblings are unrelated */
 ```
 
 The walk covers the whole chain, so depth costs nothing to the caller:
@@ -209,7 +214,7 @@ Asking whether an object is *exactly* one type is a different question, and need
 no chain walk. The class record is a public member of `ooc_object`:
 
 ```c
-cat->animal.object.class == &Animal_class;   /* 0 -- exactly a Cat */
+cat->animal.object.class == &Animal_class;  /* 0 -- exactly a Cat */
 ```
 
 ## Private fields
@@ -234,7 +239,7 @@ static const ooc_field Animal_fields[] = {
     { "name",   offsetof(Animal, name),   sizeof(((Animal *)0)->name),   1 },
     { "_id",    offsetof(Animal, _id),    sizeof(((Animal *)0)->_id),    0 },
     { "__legs", offsetof(Animal, __legs), sizeof(((Animal *)0)->__legs), 0 },
-    { NULL,     0,                        0,                            0 },
+    { NULL,     0,                        0,                             0 },
 };
 ```
 
@@ -242,8 +247,8 @@ One underscore leaves a field readable but not writable, which is enough for a
 class to show its own state without handing out a way to change it:
 
 ```c
-ooc_set(dog, "_id", &id);         /* refused with -1, the field is unchanged */
-*(int *)ooc_get(dog, "_id");      /* still readable */
+ooc_set(dog, "_id", &id);     /* refused with -1, the field is unchanged */
+*(int *)ooc_get(dog, "_id");  /* still readable */
 ```
 
 Two underscores make the field unreachable in both directions. `ooc_get()`
@@ -251,8 +256,8 @@ still finds it in the table and then withholds the pointer, so there is no way
 in by name, and only the object can change the value:
 
 ```c
-ooc_get(dog, "__legs");            /* NULL, whether or not the field exists */
-ooc_set(dog, "__legs", &legs);     /* refused with -1 */
+ooc_get(dog, "__legs");         /* NULL, whether or not the field exists */
+ooc_set(dog, "__legs", &legs);  /* refused with -1 */
 ```
 
 What a class keeps under such a name it hands out itself, through an accessor
@@ -275,10 +280,10 @@ inheriting Cat's `_lives`, and a caller can read both by name but write neither 
 the rule belongs to the declaration, not to the object:
 
 ```c
-ooc_get(garfield, "_meals");   /* readable -- Garfield's */
-ooc_get(garfield, "_lives");   /* readable -- Cat's, two levels up */
-ooc_set(garfield, "_meals", &n);   /* refused */
-ooc_set(garfield, "_lives", &n);   /* also refused */
+ooc_get(garfield, "_meals");      /* readable -- Garfield's */
+ooc_get(garfield, "_lives");      /* readable -- Cat's, two levels up */
+ooc_set(garfield, "_meals", &n);  /* refused */
+ooc_set(garfield, "_lives", &n);  /* also refused */
 ```
 
 Private means private to the declaring class, which is why a subclass adds a
@@ -308,7 +313,10 @@ threads. `ooc_retain()` returns NULL if the reference count cannot be incremente
 
 ## Portability
 
-The library API is standard C and has no third-party dependencies. The supplied Makefile uses conventional POSIX/Unix build tools and produces both shared and static libraries. Other platforms can use the same source/API with their native build system if their shared-library conventions differ.
+The library API is standard C and has no third-party dependencies. The supplied 
+Makefile uses conventional POSIX/Unix build tools and produces both shared and 
+static libraries. Other platforms can use the same source/API with their native 
+build system if their shared-library conventions differ.
 
 ## License
 
