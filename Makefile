@@ -39,10 +39,13 @@ FORCE:
 $(PKGCONFIG): libooc.pc.in FORCE | $(BUILD_DIR); sed -e 's|@prefix@|$(PREFIX)|g' -e 's|@VERSION@|$(VERSION)|g' $< > $@
 
 example: shared
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(LDFLAGS) -Iinclude -Iexample example/main.c example/animal.c example/dog.c example/cat.c -L$(BUILD_DIR) -Wl,-rpath,'$$ORIGIN' -looc -o $(BUILD_DIR)/example
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(LDFLAGS) -Iinclude -Iexample example/main.c example/animal.c example/dog.c example/cat.c example/garfield.c example/snoopy.c -L$(BUILD_DIR) -Wl,-rpath,'$$ORIGIN' -looc -o $(BUILD_DIR)/example
 
-$(BUILD_DIR)/safety-test: tests/safety.c example/animal.c example/dog.c example/cat.c example/animal.h example/dog.h example/cat.h $(LIB_STATIC)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(LDFLAGS) -Iexample tests/safety.c example/animal.c example/dog.c example/cat.c $(LIB_STATIC) -o $@
+EXAMPLE_SRCS=example/animal.c example/dog.c example/cat.c example/garfield.c example/snoopy.c
+EXAMPLE_HDRS=example/animal.h example/dog.h example/cat.h example/garfield.h example/snoopy.h
+
+$(BUILD_DIR)/safety-test: tests/safety.c $(EXAMPLE_SRCS) $(EXAMPLE_HDRS) $(LIB_STATIC)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(WARNINGS) $(LDFLAGS) -Iexample tests/safety.c $(EXAMPLE_SRCS) $(LIB_STATIC) -o $@
 
 example-test: example
 	LD_LIBRARY_PATH=$(BUILD_DIR) $(BUILD_DIR)/example

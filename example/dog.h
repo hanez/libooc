@@ -54,4 +54,22 @@ extern const ooc_class Dog_class;
  */
 Dog *dog_new(const char *name, int age, const char *breed);
 
+/*
+ * Initialise the members Dog owns, so a subclass constructor can build the Dog
+ * part of a larger object instead of duplicating it.
+ *
+ * This is the second link in the chain of constructors below Animal: a subclass
+ * of Dog calls this, gets Dog's vtable installed, and then overwrites the
+ * vtable with its own the same way dog_new() does.
+ *
+ * The caller supplies storage that ooc_new() has already allocated and
+ * zeroed. On failure the object is left exactly as it was found, so the caller
+ * may release it without a destructor having anything to do.
+ *
+ * Returns 0, or -1 for a NULL dog, an already initialised one, or a failed copy
+ * of the breed. Requires zero-initialised members and external synchronization
+ * between constructors in different threads.
+ */
+int dog_init(Dog *dog, const char *name, int age, const char *breed);
+
 #endif /* DOG_H */

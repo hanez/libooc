@@ -147,22 +147,58 @@ const ooc_class Dog_class = {
 };
 
 /*
- * Create a Dog named `name` of the given `breed` and return it, or NULL.
+ * Initialise the members Dog owns, leaving the object ready to speak as a Dog.
  *
- * Three steps, in the order a subclass constructor needs them. The object is
- * allocated through ooc_new() with a reference count of one, so the caller owns
- * it and must release it. animal_init() fills in the base part, including the
- * `_id` and `__legs` that only Animal may write. Then the vtable is replaced
- * with Dog's, so the object answers to Dog's speak rather than Animal's.
+ * Split out of dog_new() so a subclass of Dog can build this part itself, the
+ * same reason animal_init() exists for Animal. Snoopy does exactly that: it
+ * calls this, then installs its own vtable and adds its own members.
  *
  * The vtable is overwritten after animal_init() rather than before, since that
  * call installs Animal's table and this one has to win.
  *
- * Each step can fail, and both failures release the object, which is safe
- * because the destructor is already registered and frees whatever is present:
- * after a failed animal_init() there is no name and no breed to free, and after
- * a failed breed copy the name has to be freed, which is exactly what the
- * destructor does. Returns NULL if any step fails, leaving nothing to release.
+ * The breed is copied before the base part is built, so a failed copy cannot
+ * leave a half-initialised object behind: on failure nothing has been written
+ * at all and the caller may simply release the zeroed storage. Failure leaves
+ * the dog unchanged.
+ *
+ * Returns 0, or -1 for a NULL dog, an already initialised one, or a failed copy.
+ * Requires zero-initialised members and external synchronization between
+ * constructors in different threads.
+ */
+int dog_init(Dog *dog, const char *name, int age, const char *breed)
+{
+    char *copy;
+
+    if (!dog || dog->breed || dog->animal.vtable)
+        return -1;
+
+    copy = dupstr(breed);
+
+    if (!copy)
+        return -1;
+
+    if (animal_init(&dog->animal, name, age) != 0) {
+        free(copy);
+        return -1;
+    }
+
+    dog->breed = copy;
+    dog->animal.vtable = &vt;
+
+    return 0;
+}
+
+/*
+ * Create a Dog named `name` of the given `breed` and return it, or NULL.
+ *
+ * Two steps: allocate through ooc_new() with a reference count of one, so the
+ * caller owns the result and must release it, and then let dog_init() build the
+ * members. The allocation carries Dog's destructor from the start, so a failed
+ * dog_init() releases cleanly: nothing was written, and free(NULL) is what the
+ * destructor finds.
+ *
+ * Returns NULL if the allocation fails or dog_init() refuses, in both cases
+ * leaving nothing to release.
  */
 Dog *dog_new(const char *name, int age, const char *breed)
 {
@@ -171,19 +207,7 @@ Dog *dog_new(const char *name, int age, const char *breed)
     if (!dog)
         return NULL;
 
-    /*
-     * Let Animal build the part it owns, including the private `_id`, then
-     * take over the vtable with Dog's own.
-     */
-    if (animal_init(&dog->animal, name, age) != 0) {
-        ooc_release(dog);
-        return NULL;
-    }
-
-    dog->animal.vtable = &vt;
-    dog->breed = dupstr(breed);
-
-    if (!dog->breed) {
+    if (dog_init(dog, name, age, breed) != 0) {
         ooc_release(dog);
         return NULL;
     }

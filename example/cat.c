@@ -164,27 +164,64 @@ const ooc_class Cat_class = {
 };
 
 /*
- * Create a Cat named `name` of the given `colour` and return it, or NULL.
+ * Initialise the members Cat owns, leaving the object ready to speak as a Cat.
  *
- * Three steps, in the order a subclass constructor needs them. The object is
- * allocated through ooc_new() with a reference count of one, so the caller owns
- * it and must release it. animal_init() fills in the base part, including the
- * `_id` and `__legs` that only Animal may write. Then the vtable is replaced
- * with Cat's, so the object answers to Cat's speak rather than Animal's.
+ * Split out of cat_new() so a subclass of Cat can build this part itself, the
+ * same reason animal_init() exists for Animal. Garfield does exactly that: it
+ * calls this, then installs its own vtable and adds its own members.
  *
  * The vtable is overwritten after animal_init() rather than before, since that
  * call installs Animal's table and this one has to win.
  *
  * `_lives` is set here and nowhere else. A caller can read it with ooc_get() and
- * cannot write it with ooc_set(), so this constructor and any future method of
- * Cat are the only places the value can change -- which is the point of marking
- * it with an underscore.
+ * cannot write it with ooc_set(), so this function and any method of Cat are the
+ * only places the value can change -- which is the point of marking it with an
+ * underscore.
  *
- * Each step can fail, and both failures release the object, which is safe
- * because the destructor is already registered and frees whatever is present:
- * after a failed animal_init() there is no name and no colour to free, and after
- * a failed colour copy the name has to be freed, which is exactly what the
- * destructor does. Returns NULL if any step fails, leaving nothing to release.
+ * The colour is copied before the base part is built, so a failed copy cannot
+ * leave a half-initialised object behind: on failure nothing has been written
+ * at all and the caller may simply release the zeroed storage. Failure leaves
+ * the cat unchanged.
+ *
+ * Returns 0, or -1 for a NULL cat, an already initialised one, or a failed copy.
+ * Requires zero-initialised members and external synchronization between
+ * constructors in different threads.
+ */
+int cat_init(Cat *cat, const char *name, int age, const char *colour)
+{
+    char *copy;
+
+    if (!cat || cat->colour || cat->animal.vtable)
+        return -1;
+
+    copy = dupstr(colour);
+
+    if (!copy)
+        return -1;
+
+    if (animal_init(&cat->animal, name, age) != 0) {
+        free(copy);
+        return -1;
+    }
+
+    cat->colour = copy;
+    cat->animal.vtable = &vt;
+    cat->_lives = 9;
+
+    return 0;
+}
+
+/*
+ * Create a Cat named `name` of the given `colour` and return it, or NULL.
+ *
+ * Two steps: allocate through ooc_new() with a reference count of one, so the
+ * caller owns the result and must release it, and then let cat_init() build the
+ * members. The allocation carries Cat's destructor from the start, so a failed
+ * cat_init() releases cleanly: nothing was written, and free(NULL) is what the
+ * destructor finds.
+ *
+ * Returns NULL if the allocation fails or cat_init() refuses, in both cases
+ * leaving nothing to release.
  */
 Cat *cat_new(const char *name, int age, const char *colour)
 {
@@ -193,20 +230,7 @@ Cat *cat_new(const char *name, int age, const char *colour)
     if (!cat)
         return NULL;
 
-    /*
-     * Let Animal build the part it owns, including the private `_id`, then
-     * take over the vtable with Cat's own.
-     */
-    if (animal_init(&cat->animal, name, age) != 0) {
-        ooc_release(cat);
-        return NULL;
-    }
-
-    cat->animal.vtable = &vt;
-    cat->colour = dupstr(colour);
-    cat->_lives = 9;
-
-    if (!cat->colour) {
+    if (cat_init(cat, name, age, colour) != 0) {
         ooc_release(cat);
         return NULL;
     }

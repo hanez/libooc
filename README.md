@@ -45,16 +45,68 @@ If installed under `/usr/local` and your pkg-config does not search there:
 
 ## Example
 
-The `example/` directory contains an `Animal` base class and two derived classes, `Dog` and `Cat`. Both override the virtual `speak` method, and `example/main.c` walks each of them through the same calls, so the output shows one call site reaching two different implementations. Objects are reference-counted with `ooc_retain()` and `ooc_release()`.
+The `example/` directory holds a small class hierarchy. `Animal` is the root,
+`Dog` and `Cat` derive from it, and `Garfield` and `Snoopy` derive from those:
+
+    Animal
+    |-- Dog
+    |   `-- Snoopy
+    `-- Cat
+        `-- Garfield
+
+Every class overrides the virtual `speak` method, and `example/main.c` walks each
+one through the same calls before putting all four objects through a single
+`Animal *`. The output makes the point that is invisible in the source: one call
+site reaches four implementations, and the vtable decides which.
 
     make test            # runs example/main.c
     make safety-test     # runs the assertion suite in tests/
+
+Objects are reference-counted with `ooc_retain()` and `ooc_release()`.
 
 The public installed header is:
 
     #include <ooc/ooc.h>
 
 Application-specific classes such as `Animal`, `Dog` and `Cat` are not installed by the library.
+
+### Constructors down a chain
+
+Each class publishes an `init` function alongside its constructor, so a subclass
+builds the classes above it by calling them rather than repeating what they do:
+
+```c
+int garfield_init(Garfield *garfield, const char *name, int age,
+                  const char *colour, const char *favourite_food);
+```
+
+`garfield_init()` calls `cat_init()`, which calls `animal_init()`. Each one
+installs its own vtable, and the one above overwrites it, so the object ends up
+speaking as the most derived class. A subclass of `Garfield` would call
+`garfield_init()` in turn, and the composition extends without anything else
+changing.
+
+### Destructors down a chain
+
+The library calls the destructor belonging to the object's runtime type and stops
+there. A derived destructor is therefore responsible for the whole hierarchy, not
+only for its own members, and the frees grow with the depth:
+
+```c
+static void destroy(ooc_object *object)
+{
+    Garfield *garfield = (Garfield *)object;
+
+    free(garfield->favourite_food);   /* Garfield's */
+    free(garfield->cat.colour);       /* Cat's, allocated by cat_init() */
+    free(garfield->cat.animal.name);  /* Animal's, allocated by animal_init() */
+}
+```
+
+Cat's own destructor never runs for a Garfield, and Animal's never runs for
+either. Omitting a middle free is silent -- the object works perfectly well and
+only a memory checker reports the leak, which is why `make safety-test` is worth
+running under Valgrind or AddressSanitizer.
 
 ## Fields by name
 
@@ -91,6 +143,17 @@ chain: a `Dog` resolves `name` and `age` through `Animal_class`, and a field
 declared by a subclass shadows a same-named field of its base. Upcasting a
 pointer does not change this -- the runtime type of the object decides.
 
+Lookup walks as far as the chain goes, and a class inserted in the middle hides
+nothing. A `Garfield` resolves its own `favourite_food`, Cat's `colour` and
+Animal's `name`, while `imagination` -- declared on the other branch -- resolves
+to nothing at all:
+
+```c
+ooc_get(garfield, "colour");       /* Cat's */
+ooc_get(garfield, "name");         /* Animal's, two records up */
+ooc_get(garfield, "imagination");  /* NULL -- Snoopy's field, not in this chain */
+```
+
 `ooc_set()` copies the field's storage with overlap-safe semantics and returns `-1` for an
 unknown field name or a NULL argument, so a bad name is reported instead of
 writing out of bounds.
@@ -114,6 +177,11 @@ not be shared with a second field, or the same allocation would be freed twice.
 Assigning a field the pointer it already holds frees nothing. The destructor
 still frees whatever the field holds when the object is released.
 
+The rule is the library's rather than the class', so it applies to an inherited
+field exactly as to one declared alongside it. Setting a Garfield's inherited
+`colour` releases the string Cat's constructor allocated, the same as setting its
+own `favourite_food` does.
+
 ## Type checks
 
 `ooc_is_a()` walks the inheritance chain from the object's runtime type, so it
@@ -123,6 +191,15 @@ answers for a base class as well as for the type itself:
 ooc_is_a(cat, &Cat_class);      /* 1 */
 ooc_is_a(cat, &Animal_class);   /* 1 -- a Cat is an Animal */
 ooc_is_a(cat, &Dog_class);      /* 0 -- siblings are unrelated */
+```
+
+The walk covers the whole chain, so depth costs nothing to the caller:
+
+```c
+ooc_is_a(garfield, &Garfield_class);  /* 1 */
+ooc_is_a(garfield, &Cat_class);       /* 1 -- Garfield -> Cat -> Animal */
+ooc_is_a(garfield, &Animal_class);    /* 1 */
+ooc_is_a(garfield, &Snoopy_class);    /* 0 -- the other branch */
 ```
 
 This is the useful direction to ask in, because an upcast in C is unchecked: a
@@ -193,6 +270,20 @@ subclass cannot reach a base class' private field either. A class writes its
 own fields through the struct definition, where the members are in view and no
 accessor is needed.
 
+The rules hold at any depth. `Garfield` has a `_meals` of its own while
+inheriting Cat's `_lives`, and a caller can read both by name but write neither --
+the rule belongs to the declaration, not to the object:
+
+```c
+ooc_get(garfield, "_meals");   /* readable -- Garfield's */
+ooc_get(garfield, "_lives");   /* readable -- Cat's, two levels up */
+ooc_set(garfield, "_meals", &n);   /* refused */
+ooc_set(garfield, "_lives", &n);   /* also refused */
+```
+
+Private means private to the declaring class, which is why a subclass adds a
+field of its own rather than leaning on the base class' private state.
+
 Two things this is not. It does not keep a determined caller from reading a
 single-underscore field, since `ooc_get()` hands back the field's real storage
 and C has no access control -- the name is a contract, not a wall. And it does
@@ -204,7 +295,8 @@ pointer.
 
     include/ooc/ooc.h   Public API
     src/ooc.c           Library implementation
-    example/            Complete example
+    example/            Complete example: Animal, Dog, Cat, Garfield, Snoopy
+    tests/safety.c      Assertion suite
     Makefile            Build/install rules
     libooc.pc.in        pkg-config template
 

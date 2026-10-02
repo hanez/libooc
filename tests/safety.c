@@ -12,15 +12,18 @@
  *
  * Checks cover rejected metadata and arguments, overlapping field assignments,
  * owned-pointer replacement, reference-count limits, the example constructors,
- * and two subclasses of one base driven through a single call site. Assertions
- * must be enabled: NDEBUG removes checks and API calls inside assert(), leaving
- * an incomplete test run. Use AddressSanitizer or Valgrind as well to detect
+ * two subclasses of one base driven through a single call site, and a
+ * three-level hierarchy whose branches do not see each other. Assertions must be
+ * enabled: NDEBUG removes checks and API calls inside assert(), leaving an
+ * incomplete test run. Use AddressSanitizer or Valgrind as well to detect
  * invalid memory accesses, invalid frees, and leaks.
  */
 
 #include <ooc/ooc.h>
 #include "cat.h"
 #include "dog.h"
+#include "garfield.h"
+#include "snoopy.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -87,6 +90,12 @@ static void check_fields(void)
         { "bad_owned", offsetof(struct sample, bytes), 1, 1 },
         { NULL, 0, 0, 0 }
     };
+    /*
+     * The sample class, sized for the struct and with no base. `destroy` is the
+     * counting destructor above, so the release at the end of this function can
+     * be told apart from a no-op, and the field table is the local one that mixes
+     * valid descriptors with invalid ones.
+     */
     const ooc_class class = { sizeof(struct sample), destroy, NULL, fields };
     const char *invalid[] = { "header", "past", "wrap", "huge", "empty", "bad_owned", "absent" };
     struct sample *self = ooc_new(&class);
@@ -280,11 +289,152 @@ static void check_subclasses(void)
 }
 
 /*
- * Run all four groups of checks with assertions enabled. A successful run
- * returns 0 and prints the NULL-safe speak output of both example animals. A
- * failed assertion aborts instead of returning normally; a memory checker may
- * report additional failures. Compiling with NDEBUG disables the assertion
- * checks.
+ * Check a three-level hierarchy, with a subclass of a subclass on each branch.
+ *
+ * The point of the depth is that lookup crosses two class records, so "colour"
+ * is found at Cat_class and "name" at Animal_class, and neither is shadowed or
+ * lost by Garfield sitting in between. A field declared on the other branch must
+ * not resolve at all: an absent name is a NULL from ooc_get() and -1 from
+ * ooc_set(), which is the safe answer rather than a write at a wrong offset.
+ *
+ * The underscore rules have to hold across the extra level too. `_meals` and
+ * `_lives` are both readable and both refuse writes, each through the class that
+ * declared it, while `__flights` and `__legs` are unreadable as well and only the
+ * accessors reach them.
+ *
+ * Replacing an owned field three levels down has to release the string that was
+ * there before, and the destructor then has three allocations to free rather than
+ * one. Only a memory checker can see whether the middle one was freed: a missing
+ * free at this depth is silent, since the object still works perfectly well.
+ * That is what the last release below is checking.
+ *
+ * Both objects are also spoken through one Animal * each, so the printed lines
+ * are the evidence that a three-level override reaches its own implementation.
+ * Repeated initialisation is refused at every level, leaving the existing members
+ * intact, and the constructor checks reject a NULL argument at each step: the
+ * food and the imagination fail last, and the colour and the breed fail inside the
+ * base part, which is a different cleanup path again.
+ */
+static void check_deep_hierarchy(void)
+{
+    Garfield *garfield = garfield_new("Garfield", 4, "orange", "lasagna");
+    Snoopy   *snoopy  = snoopy_new("Snoopy", 3, "beagle", "his red baron");
+    Animal   *garfield_view;
+    Animal   *snoopy_view;
+    char     *food = malloc(sizeof("pizza"));
+    char     *dream = malloc(sizeof("a nap"));
+    char     *empty = NULL;
+    int       value = 7;
+
+    assert(garfield && snoopy && food && dream);
+    memcpy(food, "pizza", sizeof("pizza"));
+    memcpy(dream, "a nap", sizeof("a nap"));
+
+    /* Each level's own field, and one found two records up. */
+    assert(ooc_get(garfield, "favourite_food") == &garfield->favourite_food);
+    assert(ooc_get(garfield, "colour") == &garfield->cat.colour);
+    assert(ooc_get(garfield, "name") == &garfield->cat.animal.name);
+    assert(ooc_get(snoopy, "imagination") == &snoopy->imagination);
+    assert(ooc_get(snoopy, "breed") == &snoopy->dog.breed);
+    assert(ooc_get(snoopy, "name") == &snoopy->dog.animal.name);
+
+    /* The other branch's field is absent from this chain, not misread. */
+    assert(ooc_get(garfield, "imagination") == NULL);
+    assert(ooc_set(garfield, "imagination", dream) == -1);
+    assert(ooc_get(snoopy, "colour") == NULL);
+    assert(ooc_set(snoopy, "colour", dream) == -1);
+    assert(ooc_get(snoopy, "favourite_food") == NULL);
+    assert(ooc_get(garfield, "breed") == NULL);
+
+    /* Private in the declaring class, readable and unwritable at any depth. */
+    assert(*(int *)ooc_get(garfield, "_meals") == 1);
+    assert(ooc_set(garfield, "_meals", &value) == -1);
+    assert(*(int *)ooc_get(garfield, "_meals") == 1);
+    assert(ooc_set(garfield, "_lives", &value) == -1);
+    assert(*(int *)ooc_get(garfield, "_lives") == 9);
+
+    /* Two underscores withhold the field from ooc_get() as well. */
+    assert(ooc_get(garfield, "__legs") == NULL);
+    assert(ooc_get(snoopy, "__flights") == NULL);
+    assert(ooc_set(snoopy, "__flights", &value) == -1);
+    assert(snoopy_flights(snoopy) == 0);
+    assert(garfield_meals(garfield) == 1);
+    assert(garfield_meals(NULL) == 0);
+    assert(snoopy_flights(NULL) == 0);
+
+    /* Owned replacement on the deepest own field, and on an inherited one. */
+    assert(ooc_set(garfield, "favourite_food", &food) == 0);
+    assert(strcmp(garfield->favourite_food, "pizza") == 0);
+    assert(ooc_set(snoopy, "imagination", &dream) == 0);
+    assert(strcmp(snoopy->imagination, "a nap") == 0);
+
+    /*
+     * Subtype tests walk the whole chain, so a three-level object answers for
+     * every ancestor, while the sibling branch stays unrelated at any depth.
+     */
+    assert(ooc_is_a(garfield, &Garfield_class));
+    assert(ooc_is_a(garfield, &Cat_class));
+    assert(ooc_is_a(garfield, &Animal_class));
+    assert(!ooc_is_a(garfield, &Dog_class));
+    assert(!ooc_is_a(garfield, &Snoopy_class));
+    assert(ooc_is_a(snoopy, &Snoopy_class));
+    assert(ooc_is_a(snoopy, &Dog_class));
+    assert(ooc_is_a(snoopy, &Animal_class));
+    assert(!ooc_is_a(snoopy, &Cat_class));
+    assert(!ooc_is_a(snoopy, &Garfield_class));
+
+    /* The exact type is the deepest record, with no walk involved. */
+    assert(garfield->cat.animal.object.class == &Garfield_class);
+    assert(snoopy->dog.animal.object.class == &Snoopy_class);
+
+    /* A three-level override, reached through one Animal pointer each. */
+    garfield_view = ooc_retain(&garfield->cat.animal);
+    snoopy_view = ooc_retain(&snoopy->dog.animal);
+    assert(garfield_view && snoopy_view);
+    assert(garfield_view->vtable->speak != snoopy_view->vtable->speak);
+    animal_speak(garfield_view);
+    animal_speak(snoopy_view);
+
+    /* Repeated initialisation is refused at every level, members intact. */
+    assert(garfield_init(garfield, "again", 1, "red", "pizza") == -1);
+    assert(strcmp(garfield->cat.animal.name, "Garfield") == 0);
+    assert(snoopy_init(snoopy, "again", 1, "poodle", "food") == -1);
+    assert(strcmp(snoopy->dog.animal.name, "Snoopy") == 0);
+    assert(garfield_init(NULL, "name", 0, "colour", "food") == -1);
+    assert(snoopy_init(NULL, "name", 0, "breed", "dream") == -1);
+    assert(cat_init(NULL, "name", 0, "colour") == -1);
+    assert(dog_init(NULL, "name", 0, "breed") == -1);
+    assert(cat_init(&garfield->cat, "again", 1, "red") == -1);
+    assert(dog_init(&snoopy->dog, "again", 1, "poodle") == -1);
+
+    /*
+     * Cleared strings must not reach printf(), and the destructor then frees what
+     * is left: three allocations here, so a memory checker is the only thing that
+     * can catch a missing free at the middle level.
+     */
+    assert(ooc_set(garfield, "favourite_food", &empty) == 0);
+    assert(ooc_set(garfield, "colour", &empty) == 0);
+    assert(ooc_set(snoopy, "imagination", &empty) == 0);
+    assert(ooc_set(snoopy, "breed", &empty) == 0);
+    animal_speak(garfield_view);
+    ooc_release(garfield_view);
+    ooc_release(garfield);
+    ooc_release(snoopy_view);
+    ooc_release(snoopy);
+
+    /* NULL arguments at each constructor step, from both branches. */
+    assert(garfield_new("name", 0, NULL, "food") == NULL);
+    assert(garfield_new("name", 0, "colour", NULL) == NULL);
+    assert(snoopy_new("name", 0, NULL, "dream") == NULL);
+    assert(snoopy_new("name", 0, "breed", NULL) == NULL);
+}
+
+/*
+ * Run all five groups of checks with assertions enabled. A successful run
+ * returns 0 and prints the speak output of the example animals, including the
+ * NULL-safe fallbacks. A failed assertion aborts instead of returning normally; a
+ * memory checker may report additional failures. Compiling with NDEBUG disables
+ * the assertion checks.
  */
 int main(void)
 {
@@ -292,5 +442,6 @@ int main(void)
     check_classes();
     check_example();
     check_subclasses();
+    check_deep_hierarchy();
     return 0;
 }

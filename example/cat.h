@@ -64,4 +64,22 @@ extern const ooc_class Cat_class;
  */
 Cat *cat_new(const char *name, int age, const char *colour);
 
+/*
+ * Initialise the members Cat owns, so a subclass constructor can build the Cat
+ * part of a larger object instead of duplicating it.
+ *
+ * This is the second link in the chain of constructors below Animal: a subclass
+ * of Cat calls this, gets Cat's vtable installed, and then overwrites the
+ * vtable with its own the same way cat_new() does.
+ *
+ * The caller supplies storage that ooc_new() has already allocated and
+ * zeroed. On failure the object is left exactly as it was found, so the caller
+ * may release it without a destructor having anything to do.
+ *
+ * Returns 0, or -1 for a NULL cat, an already initialised one, or a failed copy
+ * of the colour. Requires zero-initialised members and external synchronization
+ * between constructors in different threads.
+ */
+int cat_init(Cat *cat, const char *name, int age, const char *colour);
+
 #endif /* CAT_H */
