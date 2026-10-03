@@ -28,8 +28,8 @@ For packaging, `pkg` stages the same tree under `./pkg` without needing root:
     make pkg
     make clean-pkg
 
-That is shorthand for `make DESTDIR="$PWD/pkg" PREFIX=/$(PREFIX) install`, and 
-it honours an overridden prefix:
+This is a shorthand for `make DESTDIR="$PWD/pkg" PREFIX=/$(PREFIX) install` and
+takes an overridden prefix into account:
 
     make pkg PREFIX=/usr
 
